@@ -4,45 +4,84 @@
 . /koolshare/scripts/jshn.sh
 . /koolshare/scripts/uci.sh
 
+CONFIG_FILE=/koolshare/etc/dnsmasq.d/kms.conf
+start_kms(){
+	$APP_ROOT/bin/vlmcsd
+	echo "srv-host=_vlmcs._tcp.lan,`uname -n`.lan,1688,0,100" > $CONFIG_FILE
+	/etc/init.d/dnsmasq restart
+}
+
+stop_kms(){
+	killall vlmcsd
+	rm $CONFIG_FILE
+	/etc/init.d/dnsmasq restart
+}
+
+open_port(){
+	if [ "$kms_firewall" == "1" ];then
+		ifopen=`iptables -S -t filter | grep INPUT | grep dport |grep 1688`
+		[ -z "$ifopen" ] && iptables -t filter -I INPUT -p tcp --dport 1688 -j ACCEPT > /dev/null 2>&1
+	fi
+}
+
+close_port(){
+	iptables -t filter -D INPUT -p tcp --dport 1688 -j ACCEPT > /dev/null 2>&1
+}
+
+write_firewall_start(){
+	if [ "$kms_firewall" == "1" ];then
+		echo_date 添加nat-start触发事件...
+		uci -q batch <<-EOT
+		  delete firewall.ks_kms
+		  set firewall.ks_kms=include
+		  set firewall.ks_kms.type=script
+		  set firewall.ks_kms.path=/koolshare/scripts/kms_config.sh
+		  set firewall.ks_kms.family=any
+		  set firewall.ks_kms.reload=1
+		  commit firewall
+		EOT
+	fi
+}
+
+remove_firewall_start(){
+	echo_date 删除nat-start触发...
+	uci -q batch <<-EOT
+	  delete firewall.ks_kms
+	  commit firewall
+	EOT
+}
+
 on_get() {
-    local easyexplorer_enabled
-    local easyexplorer_token
-    local easyexplorer_path
-    config_load easyexplorer
-    config_get easyexplorer_enabled main enabled
-    config_get easyexplorer_token main token
-    config_get easyexplorer_path main path
+    local kms_enabled
+    local kms_firewall
+    config_load kms
+    config_get kms_enabled main enabled
+    config_get kms_firewall main firewall
 
-    status=`pidof easyexplorer`
-    router_id=`$APP_ROOT/easyexplorer -v`
+    status=`pidof vlmcsd`
 
-    echo '{"status":"' ${status} '","router_id":"' $router_id '","token":"' $easyexplorer_token '","path":"' $path '","enabled":"' $easyexplorer_enabled '"}'
+    echo '{"status":"'${status}'","enabled":"'$kms_enabled'","firewall":"'$kms_firewall'"}'
 }
 
 on_post() {
-    local easyexplorer_enabled
-    local easyexplorer_token
-    local easyexplorer_path
+    local kms_enabled
+    local kms_firwall
 
     json_load "$INPUT_JSON"
-    json_get_var easyexplorer_enabled "enabled"
-    json_get_var easyexplorer_token "token"
-    json_get_var easyexplorer_path "path"
+    json_get_var kms_enabled "enabled"
+    json_get_var kms_firewall "firewall"
     uci -q batch <<-EOT
-     set easyexplorer.enabled=$easyexplorer_enabled
-     set easyexplorer.token=$easyexplorer_token
-     set easyexporer.path=$easyexplorer_path
-    EOT
+set kms.main.enabled=$kms_enabled
+set kms.main.firewall=$kms_firewall
+EOT
 
-    if [ "$easyexplorer_enabled"x = "1"x ]; then
-        killall easyexplorer > /dev/null 2>&1
-        start-stop-daemon -S -b -q -x $APP_ROOT/bin/easyexplorer -u $easyexplorer_token -share $easyexplorer_path -c /tmp/ee >/dev/null
-
+    if [ "$kms_enabled"x = "1"x ]; then
+        killall vlmcsd
+        start_kms
         uci commit
         on_get
-    elif [ "$easyexplorer_enabled"x = "0"x ]; then
-        killall easyexplorer > /dev/null 2>&1
-
+    elif [ "$kms_enabled"x = "0"x ]; then
+        stop_kms
         uci commit
         on_get
     else
@@ -51,23 +90,19 @@ on_post() {
 }
 
 on_start() {
-    local easyexplorer_enabled
-    local easyexplorer_token
-    local easyexplorer_path
-    config_load easyexplorer
-    config_get easyexplorer_enabled main enabled
-    config_get easyexplorer_token main token
-    config_get easyexplorer_path main path
-    if [ "$easyexplorer_enabled"x = "1"x ]; then
-        killall easyexplorer > /dev/null 2>&1
-        start-stop-daemon -S -b -q -x $APP_ROOT/bin/easyexplorer -u $easyexplorer_token -share $easyexplorer_path -c /tmp/ee >/dev/null
-    else
-        killall easyexplorer > /dev/null 2>&1
+    local kms_enabled
+    local kms_firewall
+    config_load kms
+    config_get kms_enabled main enabled
+    config_get kms_firewall main firewall
+    if [ "$kms_enabled"x = "1"x ]; then
+        killall vlmcsd
+        start_kms
     fi
 }
 
 on_stop() {
-    killall easyexplorer > /dev/null 2>&1
+    stop_kms
 }
 
 case $ACTION in
@@ -81,7 +116,7 @@ get)
     on_get
     ;;
 installed)
-    app_init_cfg '{"easyexplorer":[{"_id":"main","enabled":"0","token":"none","path":"/tmp/ee"}]}'
+    app_init_cfg '{"kms":[{"_id":"main","enabled":"0","firewall":"0"}]}'
     ;;
 status)
     on_get
@@ -93,3 +128,4 @@ stop)
     on_start
     ;;
 esac
+

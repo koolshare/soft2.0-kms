@@ -9,16 +9,34 @@
   <script type="text/javascript" src="https://unpkg.com/vue@2.2.1/dist/vue.min.js"></script>
   <script type="text/javascript" src="https://unpkg.com/vue-form-generator@2.1.1"></script>
   <link rel="stylesheet" type="text/css" href="https://unpkg.com/vue-form-generator@2.1.0/dist/vfg.css">
-  <title>KMS</title>
+  <title>KMS windows全家桶激活工具</title>
 </head>
 
 <body>
-  <h1 class="text-center">KMS</h1>
+  <h1 class="text-center">Windows全家桶激活工具</h1>
   <div class="container" id="app">
     <div class="panel panel-default">
       <div class="panel-body">
         <vue-form-generator :schema="schema" :model="model" :options="formOptions"></vue-form-generator>
       </div>
+
+    <div class="note">
+        <h5>激活Office2016（以64位为例子）</h5>
+            <ul>
+                <li>cd C:\Program Files\Microsoft Office\Office16</li>
+                <li>CSCRIPT OSPP.VBS /SETHST:192.168.31.1</li>
+                <li>CSCRIPT OSPP.VBS /ACT</li>
+                <li>CSCRIPT OSPP.VBS /DSTATUS</li>
+            </ul>
+        <h5>激活Windows</h5>
+            <ul>
+                <li>cd C:\Windows\System32</li>
+                <li>CSCRIPT /NOLOGO SLMGR.VBS /SKMS 192.168.31.1</li>
+                <li>CSCRIPT /NOLOGO SLMGR.VBS /ATO</li>
+                <li>CSCRIPT /NOLOGO SLMGR.VBS /XPR</li>
+            </ul>
+    </div>
+
     </div>
   </div>
 
@@ -62,27 +80,16 @@
               textOn: "启用",
               textOff: "禁用"
             }, {
-              type: "input",
-              inputType: "text",
-              label: "Token",
-              model: "token",
+              type: "switch",
+              label: "防火墙开关（1688端口外网访问）",
+              model: "firewall",
+              multi: true,
               readonly: false,
-              featured: true,
-              required: true,
+              featured: false,
               disabled: false,
-              placeholder: "请输入你的 Token",
-              validator: VueFormGenerator.validators.string
-            }, {
-              type: "input",
-              inputType: "text",
-              label: "Path",
-              model: "path",
-              readonly: false,
-              featured: true,
-              required: true,
-              disabled: false,
-              placeholder: "请输入你的共享路径",
-              validator: VueFormGenerator.validators.string
+              default: false,
+              textOn: "启用防火墙",
+              textOff: "禁用防火墙"
             }, {
               type: "label",
               label: "运行状态",
@@ -95,12 +102,11 @@
               onSubmit: function(mod, sch) {
                   var postData = {
                      enabled: mod.enabled ? "1" : "0",
-                     token: mod.token,
-                     path: mod.path
+                     firewall: mod.firewall? "1" : "0"
                   };
                   axios.post('/cgi-bin/luci/apps/kms', postData).then(function(result) {
-                        self.handleData(result.data, true);
-                    });
+                      self.handleData(result.data, true);
+                  });
                 }
               }]
           },
@@ -115,7 +121,13 @@
 
         var tm = function() {
             axios.get("/cgi-bin/luci/apps/kms").then(function(result) {
-                self.model.status = result.data;
+                var data = result.data;
+              if (data.status == "") {
+                  data.status = "未运行";
+              } else {
+                  data.status = "运行中，pid=" + data.status;
+              }
+                self.model.status = data.status;
                 //setTimeout(tm, 3000);
             });
         };
@@ -128,14 +140,15 @@
       methods: {
         handleData: function (data, is_post) {
           data.enabled = (data.enabled === "1");
-          data.token = data.token || '';
-          data.status = data.status || '';
-          data.path = data.path || '';
+          data.firewall = (data.firewall === "1");
+          if (data.status == "") {
+              data.status = "未运行";
+          } else {
+              data.status = "运行中，pid=" + data.status;
+          }
           if (is_post) {
             this.model.enabled = data.enabled;
-            this.model.token = data.token;
-            this.model.status = data.status;
-            this.model.path = data.path;
+            this.model.firewall = data.firewall;
           } else {
             this.model = data;
           }
