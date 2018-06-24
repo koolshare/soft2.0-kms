@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="googlebot" content="noindex, nofollow">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <script type="text/javascript" src="https://unpkg.com/vue@2.2.1/dist/vue.min.js"></script>
+  <script type="text/javascript" src="https://unpkg.com/vue-form-generator@2.1.1"></script>
+  <link rel="stylesheet" type="text/css" href="https://unpkg.com/vue-form-generator@2.1.0/dist/vfg.css">
+  <title>KMS</title>
+</head>
+
+<body>
+  <h1 class="text-center">KMS</h1>
+  <div class="container" id="app">
+    <div class="panel panel-default">
+      <div class="panel-body">
+        <vue-form-generator :schema="schema" :model="model" :options="formOptions"></vue-form-generator>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function getParameterByName(name, url) {
+        if (!url) url = window.location.href;
+        name = name.replace(/[\[\]]/g, "\\$&");
+        var regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
+            results = regex.exec(url);
+        if (!results) return null;
+        if (!results[2]) return '';
+        return decodeURIComponent(results[2].replace(/\+/g, " "));
+    }
+    function setup_kstoken() {
+        var kstoken = getParameterByName("kstoken");
+        if (kstoken) {
+            axios.defaults.headers.common['Ks-Authorization'] = kstoken;
+        }
+    }
+    setup_kstoken();
+
+    var vm = new Vue({
+      el: "#app",
+      components: {
+        'vue-form-generator': VueFormGenerator.component
+      },
+      data: function () {
+        var self = this
+        return {
+          model: {},
+          schema: {
+            fields: [{
+              type: "switch",
+              label: "开关",
+              model: "enabled",
+              multi: true,
+              readonly: false,
+              featured: false,
+              disabled: false,
+              default: false,
+              textOn: "启用",
+              textOff: "禁用"
+            }, {
+              type: "input",
+              inputType: "text",
+              label: "Token",
+              model: "token",
+              readonly: false,
+              featured: true,
+              required: true,
+              disabled: false,
+              placeholder: "请输入你的 Token",
+              validator: VueFormGenerator.validators.string
+            }, {
+              type: "input",
+              inputType: "text",
+              label: "Path",
+              model: "path",
+              readonly: false,
+              featured: true,
+              required: true,
+              disabled: false,
+              placeholder: "请输入你的共享路径",
+              validator: VueFormGenerator.validators.string
+            }, {
+              type: "label",
+              label: "运行状态",
+              model: "status",
+            }, {
+              type: "submit",
+              label: "",
+              buttonText: "提交",
+              validateBeforeSubmit: true,
+              onSubmit: function(mod, sch) {
+                  var postData = {
+                     enabled: mod.enabled ? "1" : "0",
+                     token: mod.token,
+                     path: mod.path
+                  };
+                  axios.post('/cgi-bin/luci/apps/kms', postData).then(function(result) {
+                        self.handleData(result.data, true);
+                    });
+                }
+              }]
+          },
+          formOptions: {
+            validateAfterLoad: false,
+            validateAfterChanged: true
+          }
+        }
+      },
+      mounted: function() {
+        var self = this
+
+        var tm = function() {
+            axios.get("/cgi-bin/luci/apps/kms").then(function(result) {
+                self.model.status = result.data;
+                //setTimeout(tm, 3000);
+            });
+        };
+
+        axios.get("/cgi-bin/luci/apps/kms").then(function(result) {
+            self.handleData(result.data);
+            setTimeout(tm, 3000);
+        });
+      },
+      methods: {
+        handleData: function (data, is_post) {
+          data.enabled = (data.enabled === "1");
+          data.token = data.token || '';
+          data.status = data.status || '';
+          data.path = data.path || '';
+          if (is_post) {
+            this.model.enabled = data.enabled;
+            this.model.token = data.token;
+            this.model.status = data.status;
+            this.model.path = data.path;
+          } else {
+            this.model = data;
+          }
+        }
+      }
+    });
+  </script>
+</body>
+</html>
+

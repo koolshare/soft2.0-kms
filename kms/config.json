@@ -1,0 +1,13 @@
+{
+    "name":"kms",
+    "displayName":"kms",
+    "version":"0.0.5",
+    "tags":"工具",
+    "description": "巨硬套餐激活工具",
+    "event_scripts":[
+        {"installed":99},
+        {"start":99},
+        {"stop":99}
+    ],
+    "supports": ["arm"]
+}
