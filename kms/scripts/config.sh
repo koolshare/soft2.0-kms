@@ -6,49 +6,45 @@
 
 CONFIG_FILE=/koolshare/etc/dnsmasq.d/kms.conf
 start_kms(){
-	$APP_ROOT/bin/vlmcsd
-	echo "srv-host=_vlmcs._tcp.lan,`uname -n`.lan,1688,0,100" > $CONFIG_FILE
-	/etc/init.d/dnsmasq restart
+    $APP_ROOT/bin/vlmcsd
+    echo "srv-host=_vlmcs._tcp.lan,`uname -n`.lan,1688,0,100" > $CONFIG_FILE
+    /etc/init.d/dnsmasq restart
 }
 
 stop_kms(){
-	killall vlmcsd
-	rm $CONFIG_FILE
-	/etc/init.d/dnsmasq restart
+    killall vlmcsd
+    rm $CONFIG_FILE
+    /etc/init.d/dnsmasq restart
 }
 
 open_port(){
-	if [ "$kms_firewall" == "1" ];then
-		ifopen=`iptables -S -t filter | grep INPUT | grep dport |grep 1688`
-		[ -z "$ifopen" ] && iptables -t filter -I INPUT -p tcp --dport 1688 -j ACCEPT > /dev/null 2>&1
-	fi
+    ifopen=`iptables -S -t filter | grep INPUT | grep dport |grep 1688`
+    [ -z "$ifopen" ] && iptables -t filter -I INPUT -p tcp --dport 1688 -j ACCEPT > /dev/null 2>&1
 }
 
 close_port(){
-	iptables -t filter -D INPUT -p tcp --dport 1688 -j ACCEPT > /dev/null 2>&1
+    iptables -t filter -D INPUT -p tcp --dport 1688 -j ACCEPT > /dev/null 2>&1
 }
 
 write_firewall_start(){
-	if [ "$kms_firewall" == "1" ];then
-		echo_date 添加nat-start触发事件...
-		uci -q batch <<-EOT
-		  delete firewall.ks_kms
-		  set firewall.ks_kms=include
-		  set firewall.ks_kms.type=script
-		  set firewall.ks_kms.path=/koolshare/scripts/kms_config.sh
-		  set firewall.ks_kms.family=any
-		  set firewall.ks_kms.reload=1
-		  commit firewall
-		EOT
-	fi
+        uci -q batch <<-EOT
+delete firewall.ks_kms
+set firewall.ks_kms=include
+set firewall.ks_kms.type=script
+set firewall.ks_kms.path=/koolshare/scripts/kms-config.sh
+set firewall.ks_kms.family=any
+set firewall.ks_kms.reload=1
+commit firewall
+EOT
+
 }
 
 remove_firewall_start(){
-	echo_date 删除nat-start触发...
-	uci -q batch <<-EOT
-	  delete firewall.ks_kms
-	  commit firewall
-	EOT
+    uci -q batch <<-EOT
+delete firewall.ks_kms
+commit firewall
+EOT
+
 }
 
 on_get() {
@@ -65,7 +61,7 @@ on_get() {
 
 on_post() {
     local kms_enabled
-    local kms_firwall
+    local kms_firewall
 
     json_load "$INPUT_JSON"
     json_get_var kms_enabled "enabled"
@@ -77,11 +73,19 @@ EOT
 
     if [ "$kms_enabled"x = "1"x ]; then
         killall vlmcsd
+
+        if [ "$kms_firewall" == "1" ];then
+            open_port
+            write_firewall_start
+        fi
+
         start_kms
         uci commit
         on_get
     elif [ "$kms_enabled"x = "0"x ]; then
         stop_kms
+        close_port
+        remove_firewall_start
         uci commit
         on_get
     else
@@ -97,12 +101,18 @@ on_start() {
     config_get kms_firewall main firewall
     if [ "$kms_enabled"x = "1"x ]; then
         killall vlmcsd
+        if [ "$kms_firewall" == "1" ];then
+            open_port
+            write_firewall_start
+        fi
         start_kms
     fi
 }
 
 on_stop() {
     stop_kms
+    close_port
+    remove_firewall_start
 }
 
 case $ACTION in
